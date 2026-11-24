@@ -87,12 +87,22 @@ def _has(term_re: str, text: str) -> bool:
     return re.search(term_re, text, re.I) is not None
 
 
+def _kw_regex(kw: str) -> str:
+    """Loose match for a free-text keyword: case, plural, UK/US spelling, hyphens."""
+    words = []
+    for w in re.split(r"[\s-]+", kw.lower().strip()):
+        w = re.escape(w.rstrip("s") if len(w) > 3 and w.endswith("s") and not w.endswith("ss") else w)
+        w = w.replace("ll", "l{1,2}").replace("is", "i[sz]").replace("iz", "i[sz]")
+        words.append(w + r"(?:s|es)?")
+    return r"\b" + r"[\s/-]+".join(words) + r"\b"
+
+
 def keyword_score(resume_text: str, jd_text: str, extra: list[str] | None = None):
     wanted: dict[str, str] = {k: v for k, v in VOCAB.items() if _has(v, jd_text)}
     for kw in extra or []:
         kw = kw.strip()
         if kw and kw.lower() not in wanted:
-            wanted[kw.lower()] = re.escape(kw).replace(r"\ ", r"[\s-]+")
+            wanted[kw.lower()] = _kw_regex(kw)
     gaps = sorted(k for k in wanted if k in GAP_TERMS and not _has(wanted[k], resume_text))
     scored = {k: v for k, v in wanted.items() if k not in gaps}
     matched = sorted(k for k, v in scored.items() if _has(v, resume_text))
