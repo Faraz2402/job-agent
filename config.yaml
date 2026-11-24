@@ -9,27 +9,29 @@ timezone: Asia/Kolkata
 
 search:
   hours_old: 48              # only postings from the last 2 days
-  results_per_query: 25      # per site, per query/location
+  results_per_query: 20      # per site, per query/location
   # google = Google Jobs, which indexes company career pages (Workday,
   # SmartRecruiters, SuccessFactors...) and surfaces new employers.
-  sites: [indeed, linkedin, naukri, glassdoor, google]
+  # Glassdoor dropped: it blocks scrapers most days and slowed every run.
+  sites: [indeed, linkedin, naukri, google]
   country_indeed: India
   locations: [Hyderabad, Bengaluru, Pune, Mumbai, Gurugram]
   include_remote: true       # extra "remote" search with location India
-  pause_seconds: 4           # politeness delay between searches
-  # Monday = 0 ... Sunday = 6. Queries rotate so coverage changes daily.
+  pause_seconds: 3           # politeness delay between searches
+  # Monday = 0 ... Sunday = 6. Every day covers all three role families:
+  # procurement, senior business analyst, senior data / BI analyst.
   queries_by_weekday:
-    0: [procurement analyst, spend analytics]
-    1: [procurement business analyst, procure to pay analyst]
-    2: [vendor management analyst, supplier performance analyst]
-    3: [senior procurement analyst, procurement operations analyst]
-    4: [source to pay analyst, contract compliance analyst]
-    5: [SAP Ariba analyst, procurement excellence analyst]
-    6: [procurement Power BI, software asset management analyst]
+    0: [procurement analyst, senior business analyst, senior data analyst power bi]
+    1: [procurement business analyst, business analyst power bi, senior BI analyst]
+    2: [spend analytics, senior business analyst procurement, data analyst procurement]
+    3: [senior procurement analyst, senior business analyst ERP, senior reporting analyst]
+    4: [procure to pay analyst, business analyst salesforce, power bi developer analyst]
+    5: [vendor management analyst, lead business analyst, senior data analyst]
+    6: [procurement operations analyst, senior business systems analyst, business intelligence analyst]
   # Extra international search on one weekday (visa-sponsoring markets).
   international:
     weekday: 6
-    queries: [procurement analyst]
+    queries: [procurement analyst, senior business analyst]
     sites: [indeed, linkedin, bayt]    # Bayt = main Gulf job board
     markets:
       - {location: Dubai, country_indeed: United Arab Emirates}
@@ -47,8 +49,8 @@ ats:
   smartrecruiters: []
   workable: [proarch]
   workday: []           # full careers URL, e.g. https://3m.wd1.myworkdayjobs.com/en-US/Search
-  workday_search_terms: [procurement, sourcing, spend, supplier, vendor]
-  max_boards_per_run: 80   # oldest-searched first; the rest rotate in next day
+  workday_search_terms: [procurement, business analyst, data analyst, power bi]
+  max_boards_per_run: 50   # oldest-searched first; the rest rotate in next day
 
 filters:
   # A title must contain at least one of these (case-insensitive).
@@ -66,15 +68,41 @@ filters:
     - buyer
     - software asset
     - category
+    # business / data / BI analyst roles
+    - business analyst
+    - data analyst
+    - bi analyst
+    - business intelligence
+    - power bi
+    - reporting analyst
+    - mis analyst
+    - systems analyst
+    - analytics
+    - insights analyst
   title_exclude:
     - intern
     - trainee
     - fresher
+    - junior
+    - jr.
+    - jr
+    - entry level
+    - graduate
     - data engineer
     - data scientist
+    - machine learning
     - software engineer
-    - developer
-    - sales
+    - software developer
+    - java
+    - .net
+    - full stack
+    - frontend
+    - backend
+    - sales executive
+    - sales manager
+    - inside sales
+    - sales representative
+    - business development
     - vice president
     - chief
     - director
@@ -118,7 +146,7 @@ filters:
 scoring:
   # Prefilter only. Claude does the real scoring against your resume.
   min_prefilter_score: 40
-  max_inbox_rows_per_run: 40
+  max_inbox_rows_per_run: 50
 
 linkcheck:
   max_rows_per_run: 150

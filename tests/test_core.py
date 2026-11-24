@@ -77,7 +77,7 @@ def test_filters():
     assert reject_reason(_job(), CFG) is None
     assert "agency" in reject_reason(_job(company="ABC Staffing Pvt Ltd"), CFG)
     assert "blocked" in reject_reason(_job(company="Indeed"), CFG)
-    assert "not procurement" in reject_reason(_job(title="Marketing Analyst"), CFG)
+    assert "not a target role" in reject_reason(_job(title="Marketing Executive"), CFG)
     assert "excluded" in reject_reason(_job(title="Procurement Intern"), CFG)
     assert "location" in reject_reason(_job(location="Houston, TX"), CFG)
     assert reject_reason(_job(location="Houston, TX", remote=True), CFG) is None
@@ -201,7 +201,7 @@ def test_select_new_dedupes_against_tracker_and_within_batch():
 def test_queries_rotate():
     from datetime import datetime
     q_mon, intl = todays_queries(CFG, datetime(2026, 11, 23))   # Monday
-    assert q_mon == ["procurement analyst", "spend analytics"] and intl == []
+    assert "senior business analyst" in q_mon and "procurement analyst" in q_mon and intl == []
     _, intl_sun = todays_queries(CFG, datetime(2026, 11, 29))   # Sunday
     assert any(loc == "Singapore" for _, loc, _ in intl_sun)
 
@@ -267,3 +267,25 @@ def test_collect_registry_records_results():
     jobs = ats_src.collect_registry(s, rows, CFG, errs, "24-Nov-2026")
     assert len(jobs) == 1 and jobs[0].company == "Keyloop" and jobs[0].live == "open"
     assert rows[0]["Jobs Last Run"] == 1 and rows[1]["Fails"] == 1 and len(errs) == 1
+
+
+def test_ba_and_data_analyst_roles_kept_and_scored():
+    ba = _job(company="Amgen", title="Senior Business Analyst",
+              description="Requirements gathering, user stories, UAT, Power BI dashboards, stakeholder management, Salesforce. 6+ years.")
+    da = _job(company="Novartis", title="Senior Data Analyst - Power BI",
+              description="Power BI, DAX, data model, executive reporting, SQL. 5-8 years.")
+    heavy = _job(company="X", title="Data Analyst",
+                 description="Python, PySpark, Databricks, machine learning, SQL. 4 years.")
+    for j in (ba, da):
+        assert reject_reason(j, CFG) is None
+        assert prefilter(j)[0] >= 70
+    assert prefilter(heavy)[0] < prefilter(da)[0] - 25
+    assert "excluded" in reject_reason(_job(title="Junior Data Analyst"), CFG)
+    assert reject_reason(_job(title="Business Analyst - Salesforce"), CFG) is None   # 'sales' no longer blocks Salesforce
+    assert reject_reason(_job(title="Data Engineer"), CFG) is not None
+
+
+def test_senior_associate_not_penalised():
+    a = prefilter(_job(title="Senior Associate - Business Analyst", description="Power BI"))[0]
+    b = prefilter(_job(title="Associate - Business Analyst", description="Power BI"))[0]
+    assert a - b >= 10

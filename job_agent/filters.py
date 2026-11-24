@@ -26,7 +26,7 @@ def reject_reason(job: Job, cfg: dict) -> str | None:
     if desc_hint:
         return f"posted for an unnamed client ({desc_hint})"
     if not _has_any(job.title, f.get("title_must_match_any", [])):
-        return "title not procurement-related"
+        return "title not a target role"
     bad = _has_any(job.title, f.get("title_exclude", []))
     if bad:
         return f"excluded title term ({bad})"

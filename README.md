@@ -1,13 +1,13 @@
 # job-agent
 
-Daily job sourcing for Faraz's tracker. Runs free on GitHub Actions every
+Daily job sourcing for Faraz's tracker: procurement roles plus senior Business Analyst and Data / BI Analyst roles. Runs free on GitHub Actions every
 morning (about 05:45 IST) and works together with the Claude scheduled tasks.
 
 ## How the two halves split the work
 
 | Time (IST) | Who | What |
 |---|---|---|
-| ~05:45 | **This code** (GitHub Actions) | Searches LinkedIn, Indeed, Naukri, Glassdoor (+ Bayt on Sundays) and every company job board already in your tracker (Workday, Greenhouse, Lever, Ashby, SmartRecruiters). Removes duplicates, filters out agencies/off-target titles, keyword-scores, checks the link is open, writes new candidates to the **Job Inbox** tab. Re-checks old tracker links and writes **Y (Active/Expired)** and **Z (date)**. Logs the run in **Pipeline Log**. |
+| ~05:45 | **This code** (GitHub Actions) | Searches LinkedIn, Indeed, Naukri, Google Jobs (+ Bayt on Sundays) and every company job board already in your tracker (Workday, Greenhouse, Lever, Ashby, SmartRecruiters). Removes duplicates, filters out agencies/off-target titles, keyword-scores, checks the link is open, writes new candidates to the **Job Inbox** tab. Re-checks old tracker links and writes **Y (Active/Expired)** and **Z (date)**. Logs the run in **Pipeline Log**. |
 | 07:40 | Claude | Reads the Job Inbox, scores each job against your resume, adds 55+ jobs to the Tracker (green "Yes" column), builds a tailored resume + cover letter PDF. |
 | 08:45 | Claude | Gmail status sync, hiring-manager outreach **drafts** (never sent). |
 | every 6 h | Claude | Gmail status sync. |
