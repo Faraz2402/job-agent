@@ -14,6 +14,10 @@ from ..normalize import html_to_text
 log = logging.getLogger(__name__)
 
 
+class RateLimited(RuntimeError):
+    """The board said 'too many requests' even after waiting."""
+
+
 def _title_ok(title: str, terms: list[str]) -> bool:
     t = (title or "").lower()
     return any(x.lower() in t for x in terms)
@@ -106,11 +110,13 @@ def smartrecruiters(session, company, title_terms) -> list[Job]:
 
 
 def workday(session, board: WorkdayBoard, search_terms, title_terms,
-            pause=1.0) -> list[Job]:
+            pause=4.0) -> list[Job]:
     seen, out = set(), []
     for term in search_terms:
         r = post_json(session, f"{board.api_base}/jobs",
                       {"appliedFacets": {}, "limit": 20, "offset": 0, "searchText": term})
+        if r is not None and r.status_code == 429:
+            raise RateLimited(f"workday {board.tenant}: HTTP 429")
         if r is None or r.status_code != 200:
             raise RuntimeError(f"workday {board.tenant}/{board.site}: HTTP {getattr(r, 'status_code', 'error')}")
         for p in r.json().get("jobPostings", []):
@@ -166,20 +172,30 @@ FETCHERS = {
 
 def collect_registry(session, due_rows: list[dict], cfg: dict, errors: list,
                      today: str) -> list[Job]:
-    """Search each due board; record the outcome on its registry row."""
+    """Search each due board slowly; record the outcome on its registry row.
+    If Workday says 'too many requests' several times, the remaining
+    Workday boards are left for tomorrow (not counted as failures)."""
     from ..registry import record_result, target_of
 
+    lim = cfg.get("rate_limits") or {}
     title_terms = cfg["filters"]["title_must_match_any"]
     wd_terms = cfg["ats"].get("workday_search_terms", ["procurement"])
+    wd_pause = float(lim.get("workday_pause_seconds", 4))
+    wd_stop = int(lim.get("workday_stop_after_429", 3))
+    wd_limited = 0
     jobs: list[Job] = []
     for row in due_rows:
         kind = row["Kind"]
+        if kind == "workday" and wd_limited >= wd_stop:
+            continue                      # leave for tomorrow, no penalty
         try:
             target = target_of(row)
             if kind == "workday":
-                found = workday(session, target, wd_terms, title_terms)
+                found = workday(session, target, wd_terms, title_terms, pause=wd_pause)
+                wd_limited = 0
             elif kind in FETCHERS:
                 found = FETCHERS[kind](session, target, title_terms)
+                time.sleep(1)
             else:
                 continue
             # Use the registry's company name when the API gives a slug only.
@@ -188,9 +204,17 @@ def collect_registry(session, due_rows: list[dict], cfg: dict, errors: list,
                     j.company = row["Company"]
             jobs += found
             record_result(row, today, len(found))
+        except RateLimited as e:
+            wd_limited += 1
+            msg = f"{e} (left for tomorrow)"
+            if wd_limited >= wd_stop:
+                msg = f"workday: 'too many requests' {wd_limited}x - stopped Workday for today to avoid a block"
+            log.warning("workday board rate-limited (details in Pipeline Log)")
+            errors.append(msg)
+            time.sleep(wd_pause * 3)
         except Exception as e:
             record_result(row, today, None)
             msg = f"{kind} board {row.get('Host') or row.get('Board')}: {str(e)[:160]}"
-            log.warning(msg)
+            log.warning("%s board failed (details in Pipeline Log)", kind)
             errors.append(msg)
     return jobs

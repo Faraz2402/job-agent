@@ -21,7 +21,7 @@ from pathlib import Path
 import yaml
 
 from . import liveness, registry
-from .filters import reject_reason
+from .filters import agency_tag, reject_reason
 from .http import make_session
 from .models import Job
 from .scoring import prefilter
@@ -104,6 +104,9 @@ def select_new(jobs: list[Job], tracker_urls, tracker_cts, inbox_keys, cfg,
             stats["rejected"] += 1
             continue
         j.prefilter_score, j.matched = prefilter(j)
+        tag = agency_tag(j, cfg)
+        if tag:
+            j.matched.insert(0, tag)
         if j.prefilter_score < cfg["scoring"]["min_prefilter_score"]:
             stats["low"] += 1
             continue
@@ -118,11 +121,15 @@ def select_new(jobs: list[Job], tracker_urls, tracker_cts, inbox_keys, cfg,
     candidates = sorted(by_ct.values(), key=lambda x: -x.prefilter_score)
 
     cap = cfg["scoring"]["max_inbox_rows_per_run"]
+    pause = float((cfg.get("rate_limits") or {}).get("linkcheck_pause_seconds", 1.5))
     kept = []
     for j in candidates:
         if len(kept) >= cap:
             break
         if check_live and j.live != "open":
+            if session is not None and pause:
+                import time as _t
+                _t.sleep(pause)
             status, _ = liveness.check(session, j.best_url)
             j.live = status
             if status == "closed":
@@ -172,16 +179,19 @@ def run(args) -> int:
         queries, intl_plan = todays_queries(cfg, now)
         jobs: list[Job] = []
         if queries and not args.skip_jobspy:
+            lim = cfg.get("rate_limits") or {}
+            site_stats: dict = {}
             jobs += jobspy_src.search(
                 queries, s["locations"], s["sites"], hours_old=s["hours_old"],
                 results=s["results_per_query"], country_indeed=s["country_indeed"],
-                pause=s.get("pause_seconds", 4), include_remote=s.get("include_remote", False),
-                errors=errors)
+                limits=lim, include_remote=s.get("include_remote", False),
+                errors=errors, stats=site_stats)
             for q, loc, country in intl_plan:
                 jobs += jobspy_src.search(
                     [q], [loc], (s.get("international") or {}).get("sites", ["indeed", "linkedin"]),
                     hours_old=s["hours_old"], results=s["results_per_query"],
-                    country_indeed=country, pause=s.get("pause_seconds", 4), errors=errors)
+                    country_indeed=country, limits=lim, errors=errors)
+            summary["sites"] = site_stats
         # ---- company boards: grow the registry, then search the due ones ----
         t = fmt_date(today)
         blocked = blocked_set(cfg)
@@ -197,7 +207,9 @@ def run(args) -> int:
                     board_rows, [(j.apply_url, j.company), (j.url, j.company)],
                     j.source, t, blocked)
         new_boards = len(board_rows) - before
-        due = registry.pick_due(board_rows, cfg["ats"].get("max_boards_per_run", 80))
+        due = registry.pick_due(
+            board_rows, cfg["ats"].get("max_boards_per_run", 40),
+            (cfg.get("rate_limits") or {}).get("workday_boards_per_run", 15))
         if not args.skip_ats:
             jobs += ats_src.collect_registry(session, due, cfg, errors, t)
         if sheets and not args.dry_run:
@@ -217,10 +229,11 @@ def run(args) -> int:
         if sheets and not args.dry_run:
             sheets.append_inbox(cfg["inbox_tab"], rows)
         summary["added_to_inbox"] = len(rows) if not args.dry_run else 0
-        summary["top"] = [
-            {"company": j.company, "title": j.title, "location": j.location,
-             "score": j.prefilter_score, "live": j.live, "url": j.best_url}
-            for j in kept[:15]]
+        # The repo is public: never print company names or links in logs.
+        summary["kept_by_source"] = {}
+        for j in kept:
+            k = j.source.split(":")[0]
+            summary["kept_by_source"][k] = summary["kept_by_source"].get(k, 0) + 1
 
     # ---------------- link check ----------------
     if args.mode in ("all", "linkcheck") and len(tracker_values) > 1:
@@ -228,7 +241,10 @@ def run(args) -> int:
         rows = pick_linkcheck_rows(tracker_values, today, lc["recheck_after_days"],
                                    lc["skip_statuses"], lc["max_rows_per_run"])
         updates, counts = [], {"open": 0, "closed": 0, "unknown": 0}
+        lc_pause = float((cfg.get("rate_limits") or {}).get("linkcheck_pause_seconds", 1.5))
         for row, company, url in rows:
+            import time as _t
+            _t.sleep(lc_pause)
             status, _ = liveness.check(session, url)
             counts[status] += 1
             if status == "open":
@@ -241,7 +257,7 @@ def run(args) -> int:
         summary["linkcheck"] = {"checked": len(rows), **counts,
                                 "written": written, "skipped_row_mismatch": skipped}
 
-    summary["errors"] = errors[:50]
+    summary["warnings"] = len(errors)       # details go to the private Pipeline Log only
     if sheets and not args.dry_run:
         se, lcs = summary.get("search", {}), summary.get("linkcheck", {})
         try:
@@ -250,7 +266,7 @@ def run(args) -> int:
                 "OK" if not errors else f"OK with {len(errors)} warnings",
                 se.get("found", ""), se.get("kept", ""), summary.get("added_to_inbox", ""),
                 lcs.get("checked", ""), lcs.get("open", ""), lcs.get("closed", ""),
-                lcs.get("unknown", ""), " | ".join(errors[:8])[:4000],
+                lcs.get("unknown", ""), " | ".join(errors[:25])[:45000],
             ])
         except Exception as e:
             log.error("could not write Pipeline Log: %s", e)

@@ -75,8 +75,8 @@ def _job(**kw):
 
 def test_filters():
     assert reject_reason(_job(), CFG) is None
-    assert "agency" in reject_reason(_job(company="ABC Staffing Pvt Ltd"), CFG)
-    assert "blocked" in reject_reason(_job(company="Indeed"), CFG)
+    assert reject_reason(_job(company="ABC Staffing Pvt Ltd"), CFG) is None   # agencies kept
+    assert reject_reason(_job(company="Indeed"), CFG) is None                 # nothing blocked
     assert "not a target role" in reject_reason(_job(title="Marketing Executive"), CFG)
     assert "excluded" in reject_reason(_job(title="Procurement Intern"), CFG)
     assert "location" in reject_reason(_job(location="Houston, TX"), CFG)
@@ -194,8 +194,11 @@ def test_select_new_dedupes_against_tracker_and_within_batch():
         _job(company="ABC Staffing", title="Procurement Analyst", url="https://a.com/3", description=desc, live="open"),
     ]
     kept, stats = select_new(jobs, urls, cts, set(), CFG, s, check_live=False)
-    assert len(kept) == 1 and kept[0].apply_url == "https://basf.jobs/2"
-    assert stats["dupes"] == 1 and stats["rejected"] == 1
+    by_co = {k.company: k for k in kept}
+    assert set(by_co) == {"BASF", "ABC Staffing"}                 # agency kept...
+    assert by_co["BASF"].apply_url == "https://basf.jobs/2"
+    assert by_co["ABC Staffing"].matched[0].startswith("agency")  # ...but tagged
+    assert stats["dupes"] == 1 and stats["rejected"] == 0
 
 
 def test_queries_rotate():
@@ -248,10 +251,12 @@ def test_workable_url():
     assert (w.kind, w.board, w.job_id) == ("workable", "proarch", "ABC123DEF")
 
 
-def test_unnamed_client_postings_rejected():
+def test_agencies_kept_and_tagged():
+    from job_agent.filters import agency_tag
     j = _job(company="Some Co", description="This position is listed on behalf of a partner company.")
-    assert "unnamed client" in reject_reason(j, CFG)
-    assert "blocked" in reject_reason(_job(company="Jobgether"), CFG)
+    assert reject_reason(j, CFG) is None and "unnamed client" in agency_tag(j, CFG)
+    assert "randstad" in agency_tag(_job(company="Randstad Enterprise"), CFG)
+    assert agency_tag(_job(company="Genpact"), CFG) is None
 
 
 def test_collect_registry_records_results():
@@ -291,3 +296,58 @@ def test_senior_associate_not_penalised():
     a = prefilter(_job(title="Senior Associate - Business Analyst", description="Power BI"))[0]
     b = prefilter(_job(title="Associate - Business Analyst", description="Power BI"))[0]
     assert a - b >= 10
+
+
+# ---------- rate limiting ----------
+class _DF:
+    def __init__(self, rows): self.rows = rows
+    def to_dict(self, _): return self.rows
+
+
+def test_site_skipped_after_two_blocks(monkeypatch):
+    import logging
+    from job_agent.sources import jobspy_src
+    monkeypatch.setattr(jobspy_src.time, "sleep", lambda *_: None)
+    calls = {"linkedin": 0, "indeed": 0}
+
+    def fake(**kw):
+        site = kw["site_name"][0]
+        calls[site] += 1
+        if site == "linkedin":
+            logging.getLogger("jobspy.linkedin").error("response status code 429 (blocked)")
+            return _DF([])
+        return _DF([{"site": "indeed", "title": "Procurement Analyst", "company": "X",
+                     "job_url": f"https://in.indeed.com/viewjob?jk={calls[site]}"}])
+
+    errs, stats = [], {}
+    jobs = jobspy_src.search(["a", "b", "c"], ["Hyderabad", "India"], ["linkedin", "indeed"],
+                             hours_old=30, results=30, country_indeed="India",
+                             limits={"stop_site_after_blocks": 2}, errors=errs,
+                             stats=stats, scrape=fake)
+    assert calls["linkedin"] == 2 and calls["indeed"] == 6       # LinkedIn stopped, Indeed ran all
+    assert stats["linkedin"]["blocked"] == 2 and len(jobs) == 6
+    assert any("avoid a ban" in e for e in errs)
+
+
+def test_workday_stops_after_rate_limits_without_penalty(monkeypatch):
+    from job_agent.sources import ats as ats_src
+    monkeypatch.setattr(ats_src.time, "sleep", lambda *_: None)
+    import job_agent.http as h
+    monkeypatch.setattr(h.time, "sleep", lambda *_: None)
+    rows = [{"Kind": "workday", "Board": f"t{i}", "Host": f"t{i}.wd1.myworkdayjobs.com",
+             "Site": "Ext", "Company": f"T{i}", "Fails": 0, "Active": "Yes"} for i in range(5)]
+    s = _Session({"https://t": _Resp(429)})
+    errs = []
+    ats_src.collect_registry(s, rows, CFG, errs, "24-Nov-2026")
+    assert all(r["Fails"] == 0 and r["Active"] == "Yes" for r in rows)   # not punished
+    posts = [c for c in s.calls if c.endswith("/jobs")]
+    assert len(posts) <= 3 * 2                                          # stopped after 3 boards
+    assert any("stopped Workday" in e for e in errs)
+
+
+def test_pick_due_caps_workday_separately():
+    rows = [{"Kind": "workday", "Board": f"w{i}", "Active": "Yes"} for i in range(30)] + \
+           [{"Kind": "lever", "Board": f"l{i}", "Active": "Yes"} for i in range(10)]
+    due = registry.pick_due(rows, 40, 15)
+    assert sum(r["Kind"] == "workday" for r in due) == 15
+    assert sum(r["Kind"] == "lever" for r in due) == 10

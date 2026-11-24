@@ -85,15 +85,23 @@ def add_discovered(rows: list[dict], urls_with_company, source: str,
     return added
 
 
-def pick_due(rows: list[dict], cap: int) -> list[dict]:
-    """Active boards, never-searched first, then oldest search first."""
+def pick_due(rows: list[dict], cap: int, workday_cap: int | None = None) -> list[dict]:
+    """Active boards, never-searched first, then oldest search first.
+    Workday boards have their own (smaller) cap because Workday rate-limits."""
+    from .sheets import parse_date
+
     active = [r for r in rows if str(r.get("Active", "Yes")).lower() != "no"]
+
     def sort_key(r):
-        ls = r.get("Last Searched") or ""
-        from .sheets import parse_date
-        d = parse_date(ls)
+        d = parse_date(r.get("Last Searched") or "")
         return (d is not None, d or date.min, r.get("First Seen", ""))
-    return sorted(active, key=sort_key)[:cap]
+
+    ordered = sorted(active, key=sort_key)
+    if workday_cap is None:
+        return ordered[:cap]
+    wd = [r for r in ordered if r.get("Kind") == "workday"][:workday_cap]
+    other = [r for r in ordered if r.get("Kind") != "workday"][:cap]
+    return wd + other
 
 
 def target_of(row: dict):

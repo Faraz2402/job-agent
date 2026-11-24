@@ -13,14 +13,14 @@ search:
   # google = Google Jobs, which indexes company career pages (Workday,
   # SmartRecruiters, SuccessFactors...) and surfaces new employers.
   # Glassdoor dropped: it blocks scrapers most days and slowed every run.
-  sites: [indeed, linkedin, naukri, google]
+  # Google Jobs dropped: it returned nothing from GitHub's servers.
+  sites: [indeed, linkedin, naukri]
   country_indeed: India
   # Two passes per query: Hyderabad (home market, searched on its own so
   # local jobs are never crowded out) and India-wide (catches Bengaluru,
   # Pune, Mumbai, Gurugram and remote; other cities are filtered out below).
   locations: [Hyderabad, India]
   include_remote: false      # the India-wide pass already returns remote roles
-  pause_seconds: 3           # politeness delay between searches
   # Every title runs every day.
   queries_daily:
     # procurement
@@ -48,19 +48,32 @@ search:
       - {location: Abu Dhabi, country_indeed: United Arab Emirates}
       - {location: Singapore, country_indeed: Singapore}
 
+# Speed limits so no site blocks the run. If a site still blocks twice in a
+# row, the rest of that site's searches are skipped for the day (no ban),
+# and the other sites carry on.
+rate_limits:
+  pause_seconds: 4             # between searches on Indeed / Naukri
+  linkedin_pause_seconds: 10   # LinkedIn blocks fast callers
+  linkedin_results: 20         # per LinkedIn search
+  stop_site_after_blocks: 2
+  workday_boards_per_run: 15   # rotates through all Workday boards over a few days
+  workday_pause_seconds: 4
+  workday_stop_after_429: 3    # Workday said "too many requests" 3x -> stop Workday for today
+  linkcheck_pause_seconds: 1.5
+
 ats:
   # The "Boards" tab grows by itself: every company board found in your
   # tracker links or in LinkedIn/Indeed/Naukri/Glassdoor/Google results is
   # added and then searched directly. These are extra starting boards
   # (verified to exist from real procurement postings, Nov 2026).
-  greenhouse: [vultr, mixpanel, sigmoid, appfire, neysanetwork]
-  lever: [keyloop, GoToGroup]
+  greenhouse: [mixpanel, sigmoid, appfire]
+  lever: [keyloop]
   ashby: []
   smartrecruiters: []
   workable: [proarch]
   workday: []           # full careers URL, e.g. https://3m.wd1.myworkdayjobs.com/en-US/Search
-  workday_search_terms: [procurement, business analyst, data analyst, power bi]
-  max_boards_per_run: 50   # oldest-searched first; the rest rotate in next day
+  workday_search_terms: [procurement, business analyst, data analyst]
+  max_boards_per_run: 40   # non-Workday boards per run, oldest-searched first
 
 filters:
   # A title must contain at least one of these (case-insensitive).
@@ -136,6 +149,8 @@ filters:
     - abu dhabi
     - singapore
     - united arab emirates
+  # Agencies are NOT blocked. Their postings are kept and tagged
+  # "agency" so Claude can note it.
   agency_hints:
     - staffing
     - recruitment
@@ -144,8 +159,19 @@ filters:
     - manpower
     - hiring solutions
     - hr solutions
-  # Posts jobs for unnamed clients (can't research, can't contact).
-  blocked_companies: [indeed, jobgether, weekday ai, weekday-1, weekday]
+    - randstad
+    - artech
+    - teksystems
+    - adecco
+    - hays
+    - michael page
+    - robert half
+    - quess
+    - teamlease
+    - xpheno
+    - jobgether
+    - weekday
+  blocked_companies: []        # nothing blocked
   description_agency_hints:
     - listed on behalf of a partner company
     - this role is for one of
