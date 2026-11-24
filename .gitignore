@@ -5,3 +5,6 @@ run_summary.json
 *.json.key
 *service-account*.json
 .venv/
+*.docx
+!tests/**/*.docx
+out/

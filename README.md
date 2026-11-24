@@ -69,3 +69,22 @@ export GOOGLE_SERVICE_ACCOUNT_FILE=/path/to/key.json
 python -m job_agent.run --mode all --dry-run    # read only
 python -m pytest -q                              # tests
 ```
+
+## Resume + cover letter tailoring (`job_agent.tailor`)
+
+Every resume is Faraz's own base `.docx` with keyword-level edits only, so
+structure, font (Cambria), sizes, links and indentation never change.
+The base file is stored encrypted at `assets/base_resume.docx.enc`
+(the repo is public; the passphrase lives only in the private scheduled task).
+
+```bash
+openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in assets/base_resume.docx.enc -out base.docx -pass pass:$PASS
+python -m job_agent.tailor --base base.docx --spec spec.json --jd jd.txt --out-dir out/
+```
+
+Guards: an edit must match one exact phrase, may not mix bold/plain text,
+may not touch links, may not add numbers or claims the resume can't back
+(Python, Tableau, Coupa, led negotiations, ...), and total text may grow
+at most 4% so the resume stays 2 pages. The ATS report gives the keyword
+match score before/after and format checks (docx, no tables/text boxes/
+images, single column, standard headings, contact info in body, page count).
