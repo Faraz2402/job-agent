@@ -52,8 +52,11 @@ def load_creds() -> str | None:
 def todays_queries(cfg: dict, now: datetime):
     s = cfg["search"]
     wd = now.weekday()
-    qmap = {int(k): v for k, v in (s.get("queries_by_weekday") or {}).items()}
-    queries = qmap.get(wd, [])
+    if s.get("queries_daily"):
+        queries = list(s["queries_daily"])
+    else:  # older configs rotate by weekday
+        qmap = {int(k): v for k, v in (s.get("queries_by_weekday") or {}).items()}
+        queries = qmap.get(wd, [])
     intl = s.get("international") or {}
     intl_plan = []
     if intl and int(intl.get("weekday", -1)) == wd:

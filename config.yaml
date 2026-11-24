@@ -8,26 +8,36 @@ boards_tab: Boards
 timezone: Asia/Kolkata
 
 search:
-  hours_old: 48              # only postings from the last 2 days
-  results_per_query: 20      # per site, per query/location
+  hours_old: 30              # last ~day (runs daily; 6 h overlap so nothing slips between runs)
+  results_per_query: 30      # per site, per query, per location pass
   # google = Google Jobs, which indexes company career pages (Workday,
   # SmartRecruiters, SuccessFactors...) and surfaces new employers.
   # Glassdoor dropped: it blocks scrapers most days and slowed every run.
   sites: [indeed, linkedin, naukri, google]
   country_indeed: India
-  locations: [Hyderabad, Bengaluru, Pune, Mumbai, Gurugram]
-  include_remote: true       # extra "remote" search with location India
+  # Two passes per query: Hyderabad (home market, searched on its own so
+  # local jobs are never crowded out) and India-wide (catches Bengaluru,
+  # Pune, Mumbai, Gurugram and remote; other cities are filtered out below).
+  locations: [Hyderabad, India]
+  include_remote: false      # the India-wide pass already returns remote roles
   pause_seconds: 3           # politeness delay between searches
-  # Monday = 0 ... Sunday = 6. Every day covers all three role families:
-  # procurement, senior business analyst, senior data / BI analyst.
-  queries_by_weekday:
-    0: [procurement analyst, senior business analyst, senior data analyst power bi]
-    1: [procurement business analyst, business analyst power bi, senior BI analyst]
-    2: [spend analytics, senior business analyst procurement, data analyst procurement]
-    3: [senior procurement analyst, senior business analyst ERP, senior reporting analyst]
-    4: [procure to pay analyst, business analyst salesforce, power bi developer analyst]
-    5: [vendor management analyst, lead business analyst, senior data analyst]
-    6: [procurement operations analyst, senior business systems analyst, business intelligence analyst]
+  # Every title runs every day.
+  queries_daily:
+    # procurement
+    - procurement analyst
+    - senior procurement analyst
+    - procurement business analyst
+    - spend analytics
+    - procure to pay analyst
+    - vendor management analyst
+    # business analyst
+    - senior business analyst
+    - lead business analyst
+    - business systems analyst
+    # data / BI
+    - senior data analyst
+    - senior BI analyst power bi
+    - senior reporting analyst
   # Extra international search on one weekday (visa-sponsoring markets).
   international:
     weekday: 6

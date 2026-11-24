@@ -201,7 +201,9 @@ def test_select_new_dedupes_against_tracker_and_within_batch():
 def test_queries_rotate():
     from datetime import datetime
     q_mon, intl = todays_queries(CFG, datetime(2026, 11, 23))   # Monday
-    assert "senior business analyst" in q_mon and "procurement analyst" in q_mon and intl == []
+    q_thu, _ = todays_queries(CFG, datetime(2026, 11, 26))      # Thursday
+    assert q_mon == q_thu and len(q_mon) == 12                   # every title, every day
+    assert "senior business analyst" in q_mon and "senior data analyst" in q_mon and intl == []
     _, intl_sun = todays_queries(CFG, datetime(2026, 11, 29))   # Sunday
     assert any(loc == "Singapore" for _, loc, _ in intl_sun)
 
