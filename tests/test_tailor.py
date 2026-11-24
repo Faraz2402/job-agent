@@ -59,6 +59,26 @@ def test_ats_score_and_gaps(tmp_path):
     assert rep.checks["no_tables"] and rep.checks["standard_headings"]
 
 
+def test_hard_skills_weighted_higher_than_soft():
+    # A JD asking for one hard skill (sql) and one soft term (compliance):
+    # matching only the hard skill should score higher than matching only
+    # the soft one, since Jobscan-style scoring weights hard skills 2x.
+    jd = "Looking for SQL and compliance experience."
+    only_hard = ats.keyword_score("I use SQL daily.", jd)[0]
+    only_soft = ats.keyword_score("I handle compliance reviews.", jd)[0]
+    assert only_hard > only_soft
+
+
+def test_vendor_supplier_management_synonym_merged():
+    # Resume says "vendor management", JD says "supplier management" - same
+    # true skill in different words. Real ATS-optimization tools align
+    # terminology like this; the fix must not require editing the resume.
+    jd = "Looking for supplier management experience."
+    score, matched, missing, gaps = ats.keyword_score(
+        "Owns vendor management across 900+ suppliers.", jd)
+    assert "supplier management" in matched
+
+
 def test_cover_letter_keeps_header(tmp_path):
     base = _base(tmp_path)
     out = tmp_path / "c.docx"
