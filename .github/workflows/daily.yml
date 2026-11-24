@@ -1,0 +1,46 @@
+name: Daily job search
+
+on:
+  schedule:
+    - cron: "15 0 * * *"      # 05:45 IST every day (GitHub may start it up to ~30 min late)
+  workflow_dispatch:           # "Run workflow" button in the Actions tab
+    inputs:
+      mode:
+        description: "all / search / linkcheck"
+        default: "all"
+        required: false
+      dry_run:
+        description: "true = read only, write nothing"
+        default: "false"
+        required: false
+
+concurrency:
+  group: job-agent
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python -m pytest -q
+      - name: Run job agent
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          MODE="${{ github.event.inputs.mode || 'all' }}"
+          EXTRA=""
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then EXTRA="--dry-run"; fi
+          python -m job_agent.run --mode "$MODE" $EXTRA
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: run-summary
+          path: run_summary.json
+          retention-days: 14

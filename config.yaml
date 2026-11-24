@@ -1,0 +1,126 @@
+# job-agent configuration. Edit freely; no code changes needed.
+
+spreadsheet_id: 1uPvcgjgTKvmiKs6I-MeLvjCf7fENFEQ-bljOnNKaW9c
+tracker_tab: Tracker
+inbox_tab: Job Inbox
+log_tab: Pipeline Log
+boards_tab: Boards
+timezone: Asia/Kolkata
+
+search:
+  hours_old: 48              # only postings from the last 2 days
+  results_per_query: 25      # per site, per query/location
+  # google = Google Jobs, which indexes company career pages (Workday,
+  # SmartRecruiters, SuccessFactors...) and surfaces new employers.
+  sites: [indeed, linkedin, naukri, glassdoor, google]
+  country_indeed: India
+  locations: [Hyderabad, Bengaluru, Pune, Mumbai, Gurugram]
+  include_remote: true       # extra "remote" search with location India
+  pause_seconds: 4           # politeness delay between searches
+  # Monday = 0 ... Sunday = 6. Queries rotate so coverage changes daily.
+  queries_by_weekday:
+    0: [procurement analyst, spend analytics]
+    1: [procurement business analyst, procure to pay analyst]
+    2: [vendor management analyst, supplier performance analyst]
+    3: [senior procurement analyst, procurement operations analyst]
+    4: [source to pay analyst, contract compliance analyst]
+    5: [SAP Ariba analyst, procurement excellence analyst]
+    6: [procurement Power BI, software asset management analyst]
+  # Extra international search on one weekday (visa-sponsoring markets).
+  international:
+    weekday: 6
+    queries: [procurement analyst]
+    sites: [indeed, linkedin, bayt]    # Bayt = main Gulf job board
+    markets:
+      - {location: Dubai, country_indeed: United Arab Emirates}
+      - {location: Abu Dhabi, country_indeed: United Arab Emirates}
+      - {location: Singapore, country_indeed: Singapore}
+
+ats:
+  # The "Boards" tab grows by itself: every company board found in your
+  # tracker links or in LinkedIn/Indeed/Naukri/Glassdoor/Google results is
+  # added and then searched directly. These are extra starting boards
+  # (verified to exist from real procurement postings, Nov 2026).
+  greenhouse: [vultr, mixpanel, sigmoid, appfire, neysanetwork]
+  lever: [keyloop, GoToGroup]
+  ashby: []
+  smartrecruiters: []
+  workable: [proarch]
+  workday: []           # full careers URL, e.g. https://3m.wd1.myworkdayjobs.com/en-US/Search
+  workday_search_terms: [procurement, sourcing, spend, supplier, vendor]
+  max_boards_per_run: 80   # oldest-searched first; the rest rotate in next day
+
+filters:
+  # A title must contain at least one of these (case-insensitive).
+  title_must_match_any:
+    - procurement
+    - sourcing
+    - spend
+    - purchasing
+    - procure
+    - p2p
+    - s2p
+    - vendor
+    - supplier
+    - contract
+    - buyer
+    - software asset
+    - category
+  title_exclude:
+    - intern
+    - trainee
+    - fresher
+    - data engineer
+    - data scientist
+    - software engineer
+    - developer
+    - sales
+    - vice president
+    - chief
+    - director
+    - head of
+    - legal counsel
+    - attorney
+  # Location must mention one of these (empty location is allowed).
+  location_must_match_any:
+    - india
+    - hyderabad
+    - bengaluru
+    - bangalore
+    - pune
+    - mumbai
+    - gurugram
+    - gurgaon
+    - noida
+    - chennai
+    - remote
+    - dubai
+    - abu dhabi
+    - singapore
+    - united arab emirates
+  agency_hints:
+    - staffing
+    - recruitment
+    - recruiters
+    - placement
+    - manpower
+    - hiring solutions
+    - hr solutions
+  # Posts jobs for unnamed clients (can't research, can't contact).
+  blocked_companies: [indeed, jobgether, weekday ai, weekday-1, weekday]
+  description_agency_hints:
+    - listed on behalf of a partner company
+    - this role is for one of
+    - on behalf of our client
+    - our client is looking
+    - for one of our clients
+
+scoring:
+  # Prefilter only. Claude does the real scoring against your resume.
+  min_prefilter_score: 40
+  max_inbox_rows_per_run: 40
+
+linkcheck:
+  max_rows_per_run: 150
+  recheck_after_days: 3
+  skip_statuses: [Rejected, Offer, Dropped]
