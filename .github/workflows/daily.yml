@@ -2,7 +2,8 @@ name: Daily job search
 
 on:
   schedule:
-    - cron: "15 0 * * *"      # 05:45 IST every day (GitHub may start it up to ~30 min late)
+    - cron: "37 23 * * *"     # 05:07 IST - main run, before the busy 00:00 UTC hour
+    - cron: "47 1 * * *"      # 07:17 IST - backup, only runs if the main one didn't
   workflow_dispatch:           # "Run workflow" button in the Actions tab
     inputs:
       mode:
@@ -18,19 +19,41 @@ concurrency:
   group: job-agent
   cancel-in-progress: false
 
+permissions:
+  contents: read
+  actions: read
+
 jobs:
   run:
     runs-on: ubuntu-latest
     timeout-minutes: 75
     steps:
+      - name: Skip backup if today's run already succeeded
+        id: guard
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          SKIP=false
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            TODAY=$(TZ=Asia/Kolkata date +%F)
+            N=$(gh run list -R "$GITHUB_REPOSITORY" -w daily.yml -s success -L 20 --json createdAt \
+              --jq "[.[] | select((.createdAt | fromdateiso8601 + 19800 | strftime(\"%Y-%m-%d\")) == \"$TODAY\")] | length")
+            if [ "${N:-0}" -gt 0 ]; then SKIP=true; echo "Already ran successfully today - skipping."; fi
+          fi
+          echo "skip=$SKIP" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
+        if: steps.guard.outputs.skip != 'true'
       - uses: actions/setup-python@v5
+        if: steps.guard.outputs.skip != 'true'
         with:
           python-version: "3.11"
           cache: pip
       - run: pip install -r requirements.txt
+        if: steps.guard.outputs.skip != 'true'
       - run: python -m pytest -q
+        if: steps.guard.outputs.skip != 'true'
       - name: Run job agent
+        if: steps.guard.outputs.skip != 'true'
         env:
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
         run: |
@@ -39,7 +62,7 @@ jobs:
           if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then EXTRA="--dry-run"; fi
           python -m job_agent.run --mode "$MODE" $EXTRA
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: always() && steps.guard.outputs.skip != 'true'
         with:
           name: run-summary
           path: run_summary.json
